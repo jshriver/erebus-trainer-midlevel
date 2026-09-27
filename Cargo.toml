@@ -1,0 +1,27 @@
+[package]
+name = "erebus-trainer-mid"
+version = "1.0.1"
+edition = "2024"
+rust-version = "1.87"
+
+[[bin]]
+name = "erebus-trainer-mid"
+path = "src/main.rs"
+
+[dependencies]
+# bullet_lib on crates.io is ancient/yanked; track the repo's main branch.
+# Cargo.lock records the exact commit; `cargo update -p bullet_lib` pulls the
+# latest. Re-test the engine round-trip after updating.
+bullet_lib = { git = "https://github.com/jw1912/bullet", branch = "main" }
+
+[features]
+# CUDA on by default -- this trainer only ever runs on NVIDIA hardware.
+# The build needs the CUDA toolkit (CUDA_PATH set); on a machine without it,
+# use `cargo check --no-default-features` for a syntax-only check.
+default = ["cuda"]
+cuda = ["bullet_lib/cuda"]
+rocm = ["bullet_lib/rocm"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
