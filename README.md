@@ -10,7 +10,30 @@ the network is:
 ```
 
 No threat features and no 2048-wide first layer (those are the big net's), so
-evaluation stays fast, including in WASM with 128-bit SIMD.
+evaluation stays fast.
+
+## Status: training complete
+
+The final net is `erebus-mid/checkpoints/erebus-mid-2188/quantised.bin`, the same
+file the engine embeds as `nets/net.nnue` in
+[erebus-nnue-midlevel](https://github.com/jshriver/erebus-nnue-midlevel)
+(SHA-256 `2e58d38d86e9032cc32a73bfea6429f59a25bbe0dd949380b7cc1d7bd86e4da9`).
+
+| | |
+|---|---|
+| data | one pass over 41 relabelled binpacks, 218.8 billion raw positions |
+| length | 2188 superbatches of 6104 x 16,384 positions (about 100M each) |
+| learning rate | 0.001 -> 2.5e-6, cosine over the whole run |
+| WDL lambda | 0.2 -> 0.6, linear over the whole run |
+| final loss | about 0.035 |
+
+| path | contents |
+|---|---|
+| `docs/INFERENCE.md` | everything needed to evaluate this net in another language, with test vectors |
+| `docs/ref_eval.py` | slow, dependency-free reference evaluator for `quantised.bin` |
+| `erebus-mid/checkpoints/erebus-mid-2188/` | final net, `raw.bin`, optimiser state and training log |
+| `erebus-mid/bin/` | the trainer binary that finished the run |
+| `train-order.txt` | shuffled file order; `x` marks a file as trained (all 41 are) |
 
 ```
 cargo build --release                                   # CUDA; binary: erebus-trainer-mid
@@ -22,7 +45,8 @@ All settings are consts in the CONFIG block of `src/main.rs`.
 ## Running on Colab (free tier, T4)
 
 `colab-notebook.py` is one Colab cell. Set `BINPACK_URL` to the next file in
-`train-order.txt` and run it. Each run:
+`train-order.txt` and run it. To train another net from scratch, start with an
+empty Drive folder and clear the `x` marks. Each run:
 
 1. mounts Google Drive (`MyDrive/erebus-mid/`)
 2. builds the trainer from this GitHub repo at `REPO_REF`, the first time only for each commit; the binary is kept in `bin/` on Drive
@@ -90,6 +114,8 @@ Black's side colours are swapped and the square is `^ 56`.
 
 ## Forward pass (what the engine computes)
 
+Summary only; [docs/INFERENCE.md](docs/INFERENCE.md) has the full details.
+
 ```
 c_us, c_them = clamp(acc, 0, QA)                      # i16, per side (stm first)
 s[o]  = Σ_i c[i]^2 * l1w[ob][o][i]                    # i = 0..2047, integer
@@ -97,7 +123,7 @@ x[o]  = s[o] / (QA * QA * QB) + l1b[ob][o]            # to float
 h2[o] = clamp(x[o], 0, 1)^2                           # 16
 h3[j] = clamp(Σ_o l2w[ob][j][o] * h2[o] + l2b[ob][j], 0, 1)^2   # 32
 out   = Σ_j l3w[ob][j] * h3[j] + l3b[ob]
-eval_cp = out * SCALE (400)
+eval_cp = trunc(out * SCALE)                          # SCALE = 400, toward zero
 ```
 
 `s[o]` can pass the i32 range in the worst case (2048 terms of up to 255² × 127),
